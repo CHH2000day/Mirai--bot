@@ -68,6 +68,10 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             for (pattern in NAME_REGEX.findAll(contentStr)) {
                 val name = contentStr.substring(pattern.range.first + 2, pattern.range.last - 2)
                 val qq = dbHelper.getQQIdByNickname(name)
+                if (qq < 10000) {
+                    logger.verbose("未记录的昵称:$name")
+                    return@subscribeAlways
+                }
                 val blackHistoryList = dbHelper.getBlackHistoryList(qq, this.group.id)
                 if (blackHistoryList.isEmpty()) {
                     this.group.sendMessage(this.message.quote() + "找不到${name}的黑历史")
