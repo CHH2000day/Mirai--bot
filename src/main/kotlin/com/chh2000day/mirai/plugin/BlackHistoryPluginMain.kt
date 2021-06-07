@@ -116,7 +116,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     }
 
     /**
-     * @return null 如果下载失败,否则返回下载后的文件名
+     * @return 如果下载失败返回空字符串,否则返回下载后的文件名
      */
     private suspend fun downloadImage(image: Image): String = withContext(Dispatchers.IO) {
         runCatching {
