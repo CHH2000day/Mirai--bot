@@ -12,6 +12,7 @@ CREATE TABLE `pic_info`
 (
     `filename`    varchar(128) COLLATE utf8mb4_bin NOT NULL,
     `qq`          int                              NOT NULL,
+    `group`       int                              NOT NULL,
     `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`filename`),
     UNIQUE KEY `filename_UNIQUE` (`filename`)
