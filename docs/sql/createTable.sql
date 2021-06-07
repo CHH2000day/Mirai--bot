@@ -1,7 +1,7 @@
 CREATE TABLE `nickname`
 (
     `nickname` varchar(20) COLLATE utf8mb4_bin NOT NULL COMMENT '名字',
-    `qq`       int unsigned                    NOT NULL COMMENT 'qq号',
+    `qq`       bigint                          NOT NULL COMMENT 'qq号',
     PRIMARY KEY (`nickname`),
     UNIQUE KEY `nickname_UNIQUE` (`nickname`)
 ) ENGINE = InnoDB
@@ -11,8 +11,8 @@ CREATE TABLE `nickname`
 CREATE TABLE `pic_info`
 (
     `filename`    varchar(128) COLLATE utf8mb4_bin NOT NULL,
-    `qq`          int                              NOT NULL,
-    `group`       int                              NOT NULL,
+    `qq`          bigint                           NOT NULL,
+    `group`       bigint                           NOT NULL,
     `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`filename`),
     UNIQUE KEY `filename_UNIQUE` (`filename`)
