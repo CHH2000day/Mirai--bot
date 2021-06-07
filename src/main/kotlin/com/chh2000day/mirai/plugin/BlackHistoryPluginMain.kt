@@ -84,6 +84,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
 
         }
         AddCommand.register()
+        BindNickCommand.register()
     }
 
     private fun init() = kotlin.runCatching {
@@ -110,6 +111,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     override fun onDisable() {
         super.onDisable()
         AddCommand.unregister()
+        BindNickCommand.unregister()
         dbHelper.close()
     }
 
@@ -165,6 +167,20 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 this.sendMessage(this.fromEvent.message.quote() + "添加黑历史成功")
             } else {
                 this.sendMessage(this.fromEvent.message.quote() + "添加黑历史成功")
+            }
+        }
+    }
+
+    object BindNickCommand : SimpleCommand(
+        BlackHistoryPluginMain,
+        "绑定昵称"
+    ) {
+        @Handler
+        suspend fun UserCommandSender.handle(nickname: String) {
+            if (dbHelper.bindNickname(this.user.id, nickname)) {
+                sendMessage("绑定昵称成功")
+            } else {
+                sendMessage("绑定昵称失败")
             }
         }
     }
@@ -243,6 +259,19 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             }
         }.getOrElse {
             logger.error("添加群成员黑历史失败", it)
+            false
+        }
+
+        internal suspend fun bindNickname(qq: Long, nickname: String): Boolean = kotlin.runCatching {
+            val statement =
+                getConnection().prepareStatement("insert into nickname (nickname, qq) values (?,?);")
+            statement.use {
+                it.setString(1, nickname)
+                it.setLong(2, qq)
+                return@runCatching it.executeUpdate() > 0
+            }
+        }.getOrElse {
+            logger.error("绑定昵称失败", it)
             false
         }
 
