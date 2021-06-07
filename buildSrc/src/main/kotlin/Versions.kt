@@ -1,6 +1,6 @@
 object Versions {
     //依赖的版本
-    const val kotlinVersion = "1.4.31"
+    const val kotlinVersion = "1.4.32"
     const val shadowJarVersion = "6.0.0"
     const val miraiCoreVersion = "2.6.4"
     const val miraiConsoleVersion = miraiCoreVersion

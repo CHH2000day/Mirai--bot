@@ -5,15 +5,27 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import net.mamoe.mirai.console.command.CommandManager.INSTANCE.register
+import net.mamoe.mirai.console.command.CommandManager.INSTANCE.unregister
+import net.mamoe.mirai.console.command.MemberCommandSenderOnMessage
 import net.mamoe.mirai.console.command.SimpleCommand
 import net.mamoe.mirai.console.command.UserCommandSender
-import net.mamoe.mirai.console.extension.PluginComponentStorage
 import net.mamoe.mirai.console.plugin.jvm.JvmPluginDescription
 import net.mamoe.mirai.console.plugin.jvm.KotlinPlugin
+import net.mamoe.mirai.console.util.ConsoleExperimentalApi
 import net.mamoe.mirai.contact.Member
+import net.mamoe.mirai.event.events.GroupMessageEvent
+import net.mamoe.mirai.event.globalEventChannel
+import net.mamoe.mirai.message.data.Image
+import net.mamoe.mirai.message.data.Image.Key.queryUrl
+import net.mamoe.mirai.message.data.MessageSource.Key.quote
+import net.mamoe.mirai.utils.ExternalResource.Companion.toExternalResource
+import net.mamoe.mirai.utils.ExternalResource.Companion.uploadAsImage
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import okio.buffer
+import okio.sink
 import okio.source
-import java.awt.Image
 import java.io.Closeable
 import java.io.File
 import java.io.FileNotFoundException
@@ -26,16 +38,19 @@ import kotlin.math.pow
  * @Author CHH2000day
  * @Date 2021/6/7 16:33
  **/
+@Suppress("unused")
 object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResource()) {
     private val STORE_FILE = File(configFolder, "config.json")
-    private lateinit var config: Config
+    private val httpClient = OkHttpClient()
     private val json = Json {
         prettyPrint = true
         isLenient = true
         ignoreUnknownKeys = true
     }
+    private lateinit var config: Config
+    private lateinit var imageDir: File
     private lateinit var dbHelper: DatabaseHelper
-
+    private val NAME_REGEX = Regex("来点.{1,20}黑历史")
 
     init {
         kotlin.runCatching { Class.forName("com.mysql.cj.jdbc.Driver").getConstructor().newInstance() }
@@ -47,39 +62,109 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
 
     override fun onEnable() {
         super.onEnable()
+        init()
+        globalEventChannel().subscribeAlways<GroupMessageEvent> {
+            val contentStr = this.message.contentToString()
+            for (pattern in NAME_REGEX.findAll(contentStr)) {
+                val name = contentStr.substring(pattern.range.first + 2, pattern.range.last - 2)
+                val qq = dbHelper.getQQIdByNickname(name)
+                val blackHistoryList = dbHelper.getBlackHistoryList(qq, this.group.id)
+                if (blackHistoryList.isEmpty()) {
+                    this.group.sendMessage(this.message.quote() + "找不到${name}的黑历史")
+                } else {
+                    //随机挑个黑历史
+                    val file = File(imageDir, blackHistoryList.random())
+                    file.toExternalResource().use {
+                        it.uploadAsImage(this.group)
+                    }
+                }
+                //只处理一次
+                break
+            }
+
+        }
+        AddCommand.register()
     }
 
-    private suspend fun init() = withContext(Dispatchers.IO) {
-        kotlin.runCatching {
-            config = if (STORE_FILE.exists()) {
-                val source = STORE_FILE.source().buffer()
-                val confStr = source.readUtf8()
-                source.close()
-                json.decodeFromString(Config.serializer(), confStr)
-            } else {
-                logger.error("数据库配置文件不存在!")
-                throw FileNotFoundException("数据库配置文件不存在!")
-            }
-            dbHelper = DatabaseHelper(
-                config.databaseUrl,
-                config.databaseUsername,
-                config.databasePassword
-            )
-        }.exceptionOrNull()?.let {
-            logger.error("初始化黑历史插件失败!", it)
+    private fun init() = kotlin.runCatching {
+        config = if (STORE_FILE.exists()) {
+            val source = STORE_FILE.source().buffer()
+            val confStr = source.readUtf8()
+            source.close()
+            json.decodeFromString(Config.serializer(), confStr)
+        } else {
+            logger.error("数据库配置文件不存在!")
+            throw FileNotFoundException("数据库配置文件不存在!")
         }
+        dbHelper = DatabaseHelper(
+            config.databaseUrl,
+            config.databaseUsername,
+            config.databasePassword
+        )
+        imageDir = File(config.imageDir)
+    }.exceptionOrNull()?.let {
+        logger.error("初始化黑历史插件失败!", it)
     }
+
 
     override fun onDisable() {
         super.onDisable()
+        AddCommand.unregister()
+        dbHelper.close()
+    }
+
+    /**
+     * @return null 如果下载失败,否则返回下载后的文件名
+     */
+    private suspend fun downloadImage(image: Image): String = withContext(Dispatchers.IO) {
+        runCatching {
+            val url = image.queryUrl()
+            val filename = url.substring(url.lastIndexOf('/'))
+            val destFile = File(imageDir, filename)
+            val request = Request.Builder().url(url).build()
+            val response = httpClient.newCall(request).execute()
+            if (response.isSuccessful) {
+                response.body?.source()?.use { bufferedSource ->
+                    val sink = destFile.sink().buffer()
+                    sink.use {
+                        it.writeAll(bufferedSource)
+                    }
+                    return@runCatching filename
+                }
+            }
+            ""
+        }.getOrElse {
+            logger.error("下载图片:${image.queryUrl()}失败", it)
+            ""
+        }
     }
 
     object AddCommand : SimpleCommand(
         BlackHistoryPluginMain,
-        "添加黑历史",
+        "添加黑历史"
     ) {
-        fun UserCommandSender.handle(member: Member, vararg pics: Image) {
+        @OptIn(
+            ConsoleExperimentalApi::class,
+            net.mamoe.mirai.console.command.descriptor.ExperimentalCommandDescriptors::class
+        )
+        override val prefixOptional: Boolean
+            get() = true
 
+        suspend fun UserCommandSender.handle(member: Member, pics: Image) {
+            if (this !is MemberCommandSenderOnMessage) {
+                return
+            }
+            //Download image first
+            val filename = downloadImage(pics)
+            if (filename.isBlank()) {
+                this.sendMessage(this.fromEvent.message.quote() + "下载图片失败")
+                return
+            }
+            if (dbHelper.insertBlackHistory(member.id, member.group.id, filename)) {
+                this.sendMessage(this.fromEvent.message.quote() + "添加黑历史成功")
+            } else {
+                this.sendMessage(this.fromEvent.message.quote() + "添加黑历史成功")
+            }
         }
     }
 
@@ -121,6 +206,61 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                     return@withContext getConnection()
                 }
             }
+        }
+
+        /**
+         * @return 黑历史图片的列表
+         */
+        internal suspend fun getBlackHistoryList(qq: Long, group: Long): List<String> = kotlin.runCatching {
+            val result = mutableListOf<String>()
+            val statement =
+                getConnection().prepareStatement("select filename from `pic_info` where qq=? and `group`=?;")
+            statement.use { preparedStatement ->
+                preparedStatement.setLong(1, qq)
+                preparedStatement.setLong(2, group)
+                val resultSet = preparedStatement.executeQuery()
+                resultSet.use {
+                    while (it.next()) {
+                        result.add(it.getString(1))
+                    }
+                }
+            }
+            return result
+        }.getOrElse {
+            logger.error("获取群成员黑历史失败", it)
+            emptyList()
+        }
+
+        internal suspend fun insertBlackHistory(qq: Long, group: Long, filename: String): Boolean = kotlin.runCatching {
+            val statement =
+                getConnection().prepareStatement("insert into pic_info (filename, qq, `group`) values (?,?,?);")
+            statement.use {
+                it.setString(1, filename)
+                it.setLong(2, qq)
+                it.setLong(3, group)
+                return@runCatching it.executeUpdate() > 0
+            }
+        }.getOrElse {
+            logger.error("添加群成员黑历史失败", it)
+            false
+        }
+
+        internal suspend fun getQQIdByNickname(nickname: String): Long = kotlin.runCatching {
+            val statement =
+                getConnection().prepareStatement("select qq from nickname where nickname=?;")
+            statement.use { preparedStatement ->
+                preparedStatement.setString(1, nickname)
+                val resultSet = preparedStatement.executeQuery()
+                resultSet.use {
+                    if (it.next()) {
+                        return@runCatching it.getLong(1)
+                    }
+                }
+            }
+            return 0
+        }.getOrElse {
+            logger.error("获取群成员黑历史失败", it)
+            0
         }
 
         /**
