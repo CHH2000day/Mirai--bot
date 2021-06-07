@@ -75,7 +75,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                     //随机挑个黑历史
                     val file = File(imageDir, blackHistoryList.random())
                     file.toExternalResource().use {
-                        it.uploadAsImage(this.group)
+                        this.group.sendMessage(it.uploadAsImage(this.group))
                     }
                 }
                 //只处理一次
@@ -119,7 +119,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     private suspend fun downloadImage(image: Image): String = withContext(Dispatchers.IO) {
         runCatching {
             val url = image.queryUrl()
-            val filename = url.substring(url.lastIndexOf('/'))
+            val filename = image.imageId
             val destFile = File(imageDir, filename)
             val request = Request.Builder().url(url).build()
             val response = httpClient.newCall(request).execute()
@@ -150,6 +150,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         override val prefixOptional: Boolean
             get() = true
 
+        @Handler
         suspend fun UserCommandSender.handle(member: Member, pics: Image) {
             if (this !is MemberCommandSenderOnMessage) {
                 return
