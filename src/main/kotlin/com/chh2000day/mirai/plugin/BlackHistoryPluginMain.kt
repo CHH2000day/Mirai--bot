@@ -50,6 +50,8 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     private lateinit var config: Config
     private lateinit var imageDir: File
     private lateinit var dbHelper: DatabaseHelper
+    private var hasGroupConstraints = false
+    private lateinit var enabledGroups: List<Long>
     private val NAME_REGEX = Regex("来点.{1,20}黑历史")
 
     init {
@@ -64,6 +66,9 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         super.onEnable()
         init()
         globalEventChannel().subscribeAlways<GroupMessageEvent> {
+            if (hasGroupConstraints && !enabledGroups.contains(this.group.id)) {
+                return@subscribeAlways
+            }
             val contentStr = this.message.contentToString()
             for (pattern in NAME_REGEX.findAll(contentStr)) {
                 val name = contentStr.substring(pattern.range.first + 2, pattern.range.last - 2)
@@ -107,6 +112,9 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             config.databasePassword
         )
         imageDir = File(config.imageDir)
+        enabledGroups = config.enabledGroups
+        //留空以禁用群组限制
+        hasGroupConstraints = enabledGroups.isNotEmpty()
     }.exceptionOrNull()?.let {
         logger.error("初始化黑历史插件失败!", it)
     }
@@ -325,6 +333,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         val databaseUrl: String,
         val databaseUsername: String,
         val databasePassword: String,
-        val imageDir: String
+        val imageDir: String,
+        val enabledGroups: List<Long> = mutableListOf()
     )
 }
