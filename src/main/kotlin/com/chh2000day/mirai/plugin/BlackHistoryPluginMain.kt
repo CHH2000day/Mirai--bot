@@ -5,11 +5,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import net.mamoe.mirai.console.command.*
 import net.mamoe.mirai.console.command.CommandManager.INSTANCE.register
 import net.mamoe.mirai.console.command.CommandManager.INSTANCE.unregister
-import net.mamoe.mirai.console.command.MemberCommandSenderOnMessage
-import net.mamoe.mirai.console.command.SimpleCommand
-import net.mamoe.mirai.console.command.UserCommandSender
 import net.mamoe.mirai.console.plugin.jvm.JvmPluginDescription
 import net.mamoe.mirai.console.plugin.jvm.KotlinPlugin
 import net.mamoe.mirai.console.util.ConsoleExperimentalApi
@@ -18,7 +16,9 @@ import net.mamoe.mirai.event.events.GroupMessageEvent
 import net.mamoe.mirai.event.globalEventChannel
 import net.mamoe.mirai.message.data.Image
 import net.mamoe.mirai.message.data.Image.Key.queryUrl
+import net.mamoe.mirai.message.data.MessageChain
 import net.mamoe.mirai.message.data.MessageSource.Key.quote
+import net.mamoe.mirai.message.data.PlainText
 import net.mamoe.mirai.utils.ExternalResource.Companion.toExternalResource
 import net.mamoe.mirai.utils.ExternalResource.Companion.uploadAsImage
 import okhttp3.OkHttpClient
@@ -153,7 +153,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         }
     }
 
-    object AddCommand : SimpleCommand(
+    object AddCommand : RawCommand(
         BlackHistoryPluginMain,
         "添加黑历史"
     ) {
@@ -165,7 +165,52 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         override val prefixOptional: Boolean
             get() = true
 
-        @Handler
+        /**
+         * 在指令被执行时调用.
+         *
+         * @param args 指令参数.
+         *
+         * @see CommandManager.execute 查看更多信息
+         */
+        override suspend fun CommandSender.onCommand(args: MessageChain) {
+            if (this !is MemberCommandSenderOnMessage) {
+                sendMessage("来源错误!")
+                return
+            }
+            if (args.size < 2) {
+                logger.info("参数列表错误")
+                return
+            }
+            val pic = args[1]
+            if (pic !is Image) {
+                logger.info("参数错误:对象非图像")
+                return
+            }
+            when (val destUser = args[0]) {
+                is Member -> {
+                    handle(destUser, pic)
+                }
+                is PlainText -> {
+                    val memberId = dbHelper.getQQIdByNickname(destUser.content.trim())
+                    if (memberId == 0L) {
+                        sendMessage(this.fromEvent.message.quote() + "${destUser.content}是谁呢QaQ")
+                        return
+                    }
+                    val member = this.group.members.findLast {
+                        it.id == memberId
+                    }
+                    if (member == null) {
+                        sendMessage(this.fromEvent.message.quote() + "${destUser.content}不在本群QaQ")
+                        return
+                    }
+                    handle(member, pic)
+                }
+                else -> {
+                    sendMessage("未知对象:${destUser.contentToString()}")
+                }
+            }
+        }
+
         suspend fun UserCommandSender.handle(member: Member, pics: Image) {
             if (this !is MemberCommandSenderOnMessage) {
                 return
