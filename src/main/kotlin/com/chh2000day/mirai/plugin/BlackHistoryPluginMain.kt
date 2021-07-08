@@ -149,6 +149,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         BlackHistoryPluginMain,
         "添加黑历史"
     ) {
+        @Suppress("EXPERIMENTAL_IS_NOT_ENABLED")
         @OptIn(
             ConsoleExperimentalApi::class,
             net.mamoe.mirai.console.command.descriptor.ExperimentalCommandDescriptors::class
@@ -170,7 +171,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             if (dbHelper.insertBlackHistory(member.id, member.group.id, filename)) {
                 this.sendMessage(this.fromEvent.message.quote() + "添加黑历史成功")
             } else {
-                this.sendMessage(this.fromEvent.message.quote() + "添加黑历史成功")
+                this.sendMessage(this.fromEvent.message.quote() + "添加黑历史失败")
             }
         }
     }
@@ -311,6 +312,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
          *
          * @throws IOException if an I/O error occurs
          */
+        @Suppress("KDocUnresolvedReference")
         override fun close() {
             if (!mConnection.isClosed) {
                 mConnection.close()
