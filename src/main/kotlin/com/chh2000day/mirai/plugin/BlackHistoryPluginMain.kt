@@ -53,6 +53,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     private lateinit var dbHelper: DatabaseHelper
     private var hasGroupConstraints = false
     private lateinit var enabledGroups: List<Long>
+    private var allowBindViaCommand: Boolean = true
 
     /**
      * 是否允许使用如"添加黑历史 X (图片)"的方式添加黑历史
@@ -100,7 +101,9 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
 
         }
         AddCommand.register()
-        BindNickCommand.register()
+        if (allowBindViaCommand) {
+            BindNickCommand.register()
+        }
     }
 
     private fun init() = kotlin.runCatching {
@@ -122,6 +125,8 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         enabledGroups = config.enabledGroups
         //留空以禁用群组限制
         hasGroupConstraints = enabledGroups.isNotEmpty()
+        allowAddBlackHistoryWithName = config.allowAddBlackHistoryWithName
+        allowBindViaCommand = config.allowBindViaCommand
     }.exceptionOrNull()?.let {
         logger.error("初始化黑历史插件失败!", it)
     }
@@ -130,7 +135,9 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     override fun onDisable() {
         super.onDisable()
         AddCommand.unregister()
-        BindNickCommand.unregister()
+        if (allowBindViaCommand) {
+            BindNickCommand.unregister()
+        }
         dbHelper.close()
     }
 
@@ -399,6 +406,10 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         /**
          * 是否允许使用如"添加黑历史 X (图片)"的方式添加黑历史
          */
-        val allowAddBlackHistoryWithName: Boolean = true
+        val allowAddBlackHistoryWithName: Boolean = true,
+        /**
+         * 是否启用绑定指令
+         */
+        val allowBindViaCommand: Boolean = true
     )
 }
