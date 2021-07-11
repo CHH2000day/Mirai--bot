@@ -52,6 +52,12 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     private lateinit var dbHelper: DatabaseHelper
     private var hasGroupConstraints = false
     private lateinit var enabledGroups: List<Long>
+
+    /**
+     * 是否允许使用如"添加黑历史 X (图片)"的方式添加黑历史
+     */
+
+    private var allowAddBlackHistoryWithName: Boolean = true
     private val NAME_REGEX = Regex("来点.{1,20}黑历史")
 
     init {
@@ -206,12 +212,12 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                     handle(member, pic)
                 }
                 else -> {
-                    sendMessage("未知对象:${destUser.contentToString()}")
+                    sendMessage("未知对象${destUser::class.qualifiedName}:${destUser.contentToString()}")
                 }
             }
         }
 
-        suspend fun UserCommandSender.handle(member: Member, pics: Image) {
+        private suspend fun UserCommandSender.handle(member: Member, pics: Image) {
             if (this !is MemberCommandSenderOnMessage) {
                 return
             }
@@ -229,10 +235,17 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         }
     }
 
+    /**
+     * "/绑定昵称 '昵称'"
+     */
     object BindNickCommand : SimpleCommand(
         BlackHistoryPluginMain,
         "绑定昵称"
     ) {
+        @OptIn(ConsoleExperimentalApi::class)
+        override val prefixOptional: Boolean
+            get() = true
+
         @Handler
         suspend fun UserCommandSender.handle(nickname: String) {
             if (dbHelper.bindNickname(this.user.id, nickname)) {
@@ -379,6 +392,10 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         val databaseUsername: String,
         val databasePassword: String,
         val imageDir: String,
-        val enabledGroups: List<Long> = mutableListOf()
+        val enabledGroups: List<Long> = mutableListOf(),
+        /**
+         * 是否允许使用如"添加黑历史 X (图片)"的方式添加黑历史
+         */
+        val allowAddBlackHistoryWithName: Boolean = true
     )
 }
