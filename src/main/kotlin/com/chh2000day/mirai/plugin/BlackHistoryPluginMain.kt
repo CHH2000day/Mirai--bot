@@ -14,6 +14,7 @@ import net.mamoe.mirai.console.util.ConsoleExperimentalApi
 import net.mamoe.mirai.contact.Member
 import net.mamoe.mirai.event.events.GroupMessageEvent
 import net.mamoe.mirai.event.globalEventChannel
+import net.mamoe.mirai.message.data.At
 import net.mamoe.mirai.message.data.Image
 import net.mamoe.mirai.message.data.Image.Key.queryUrl
 import net.mamoe.mirai.message.data.MessageChain
@@ -193,8 +194,10 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 return
             }
             when (val destUser = args[0]) {
-                is Member -> {
-                    handle(destUser, pic)
+                is At -> {
+                    this.group.members[destUser.target]?.let {
+                        handle(it, pic)
+                    }
                 }
                 is PlainText -> {
                     val memberId = dbHelper.getQQIdByNickname(destUser.content.trim())
