@@ -8,6 +8,8 @@ import kotlinx.serialization.json.Json
 import net.mamoe.mirai.console.command.*
 import net.mamoe.mirai.console.command.CommandManager.INSTANCE.register
 import net.mamoe.mirai.console.command.CommandManager.INSTANCE.unregister
+import net.mamoe.mirai.console.command.ConsoleCommandSender.sendMessage
+import net.mamoe.mirai.console.command.descriptor.ExperimentalCommandDescriptors
 import net.mamoe.mirai.console.plugin.jvm.JvmPluginDescription
 import net.mamoe.mirai.console.plugin.jvm.KotlinPlugin
 import net.mamoe.mirai.console.util.ConsoleExperimentalApi
@@ -82,7 +84,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 val name = contentStr.substring(pattern.range.first + 2, pattern.range.last - 2)
                 val qq = dbHelper.getQQIdByNickname(name)
                 if (qq < 10000) {
-                    logger.verbose("未记录的昵称:$name")
+                    sendMessage("未记录的昵称:$name")
                     return@subscribeAlways
                 }
                 val blackHistoryList = dbHelper.getBlackHistoryList(qq, this.group.id)
@@ -174,7 +176,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         @Suppress("EXPERIMENTAL_IS_NOT_ENABLED")
         @OptIn(
             ConsoleExperimentalApi::class,
-            net.mamoe.mirai.console.command.descriptor.ExperimentalCommandDescriptors::class
+            ExperimentalCommandDescriptors::class
         )
         override val prefixOptional: Boolean
             get() = true
@@ -192,12 +194,12 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 return
             }
             if (args.size < 2) {
-                logger.info("参数列表错误")
+                sendMessage("参数列表错误")
                 return
             }
             val pic = args[1]
             if (pic !is Image) {
-                logger.info("参数错误:对象非图像")
+                sendMessage("参数错误:对象非图像")
                 return
             }
             when (val destUser = args[0]) {
@@ -252,7 +254,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         BlackHistoryPluginMain,
         "绑定昵称"
     ) {
-        @OptIn(ConsoleExperimentalApi::class)
+        @OptIn(ConsoleExperimentalApi::class, ExperimentalCommandDescriptors::class)
         override val prefixOptional: Boolean
             get() = true
 
