@@ -239,7 +239,13 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 this.sendMessage(this.fromEvent.message.quote() + "下载图片失败")
                 return
             }
-            if (dbHelper.insertBlackHistory(member.id, member.group.id, filename)) {
+            if (dbHelper.insertBlackHistory(
+                    qq = member.id,
+                    operatorQQ = this.user.id,
+                    group = member.group.id,
+                    filename
+                )
+            ) {
                 this.sendMessage(this.fromEvent.message.quote() + "添加黑历史成功")
             } else {
                 this.sendMessage(this.fromEvent.message.quote() + "添加黑历史失败")
@@ -289,7 +295,6 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             }
         }
 
-        @Synchronized
         private suspend fun getConnection(): Connection = withContext(Dispatchers.IO) {
             if (mConnection.isValid(100)) {
                 return@withContext mConnection
@@ -331,19 +336,21 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             emptyList()
         }
 
-        internal suspend fun insertBlackHistory(qq: Long, group: Long, filename: String): Boolean = kotlin.runCatching {
-            val statement =
-                getConnection().prepareStatement("insert into pic_info (filename, qq, `group`) values (?,?,?);")
-            statement.use {
-                it.setString(1, filename)
-                it.setLong(2, qq)
-                it.setLong(3, group)
-                return@runCatching it.executeUpdate() > 0
+        internal suspend fun insertBlackHistory(qq: Long, operatorQQ: Long, group: Long, filename: String): Boolean =
+            kotlin.runCatching {
+                val statement =
+                    getConnection().prepareStatement("insert into pic_info (filename, qq, `group`,operator) values (?,?,?,?);")
+                statement.use {
+                    it.setString(1, filename)
+                    it.setLong(2, qq)
+                    it.setLong(3, group)
+                    it.setLong(4, operatorQQ)
+                    return@runCatching it.executeUpdate() > 0
+                }
+            }.getOrElse {
+                logger.error("添加群成员黑历史失败", it)
+                false
             }
-        }.getOrElse {
-            logger.error("添加群成员黑历史失败", it)
-            false
-        }
 
         internal suspend fun bindNickname(qq: Long, nickname: String): Boolean = kotlin.runCatching {
             val statement =
