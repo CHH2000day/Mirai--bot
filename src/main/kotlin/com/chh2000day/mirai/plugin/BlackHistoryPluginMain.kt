@@ -62,7 +62,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
      */
 
     private var allowAddBlackHistoryWithName: Boolean = true
-    private val NAME_REGEX = Regex("来点.{1,20}黑历史")
+    private val NAME_REGEX = Regex("来点.{1,20}[黑历史|语录]")
 
     init {
         kotlin.runCatching { Class.forName("com.mysql.cj.jdbc.Driver").getConstructor().newInstance() }
@@ -81,7 +81,15 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             }
             val contentStr = this.message.contentToString()
             for (pattern in NAME_REGEX.findAll(contentStr)) {
-                val name = contentStr.substring(pattern.range.first + 2, pattern.range.last - 2)
+                val patternString = pattern.groups[0]?.value!!
+                val offset = pattern.groups[1].let {
+                    if (patternString.endsWith("语录")) {
+                        pattern.groups[0]!!.range.last - 1
+                    } else {
+                        pattern.groups[0]!!.range.last - 2
+                    }
+                }
+                val name = contentStr.substring(pattern.range.first + 2, pattern.range.last - offset)
                 val qq = dbHelper.getQQIdByNickname(name)
                 if (qq < 10000) {
                     sendMessage("未记录的昵称:$name")
