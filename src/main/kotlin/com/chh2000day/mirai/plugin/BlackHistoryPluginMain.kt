@@ -82,14 +82,14 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             val contentStr = this.message.contentToString()
             for (pattern in NAME_REGEX.findAll(contentStr)) {
                 val patternString = pattern.groups[0]?.value!!
-                val offset = pattern.groups[0].let {
+                val endIndex = pattern.groups[0].let {
                     if (patternString.endsWith("语录")) {
                         it!!.range.last - 1
                     } else {
                         it!!.range.last - 2
                     }
                 }
-                val name = contentStr.substring(pattern.range.first + 2, pattern.range.last - offset)
+                val name = contentStr.substring(pattern.range.first + 2, endIndex)
                 val qq = dbHelper.getQQIdByNickname(name)
                 if (qq < 10000) {
                     sendMessage("未记录的昵称:$name")
