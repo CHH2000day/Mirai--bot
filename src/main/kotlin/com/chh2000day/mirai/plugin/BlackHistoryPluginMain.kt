@@ -82,11 +82,11 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             val contentStr = this.message.contentToString()
             for (pattern in NAME_REGEX.findAll(contentStr)) {
                 val patternString = pattern.groups[0]?.value!!
-                val offset = pattern.groups[1].let {
+                val offset = pattern.groups[0].let {
                     if (patternString.endsWith("语录")) {
-                        pattern.groups[0]!!.range.last - 1
+                        it!!.range.last - 1
                     } else {
-                        pattern.groups[0]!!.range.last - 2
+                        it!!.range.last - 2
                     }
                 }
                 val name = contentStr.substring(pattern.range.first + 2, pattern.range.last - offset)
