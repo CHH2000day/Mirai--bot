@@ -1,6 +1,6 @@
 id: com.chh2000day.mirai.plugin.BlackHistoryPlugin
 main: com.chh2000day.mirai.plugin.BlackHistoryPluginMain
 name: 黑历史
-version: 0.2.8
+version: 0.2.9
 author: CHH2000day
 info: N/A
