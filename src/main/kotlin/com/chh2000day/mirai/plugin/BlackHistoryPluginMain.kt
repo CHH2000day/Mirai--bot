@@ -179,7 +179,10 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
 
     object AddCommand : RawCommand(
         BlackHistoryPluginMain,
-        "添加黑历史"
+        "添加黑历史",
+        secondaryNames = arrayOf("添加语录"),
+        prefixOptional = true,
+        usage = "(/)添加黑历史 <member> <图片> \n or \n (/)添加语录 <member> <图片>"
     ) {
         @Suppress("EXPERIMENTAL_IS_NOT_ENABLED")
         @OptIn(
