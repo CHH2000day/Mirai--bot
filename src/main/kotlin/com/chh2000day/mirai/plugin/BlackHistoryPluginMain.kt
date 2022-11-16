@@ -88,20 +88,18 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 return@subscribeAlways
             }
             fun getRandomRecord(): RandomBlackHistoryRecord? {
-                val pollSize = config.randomBlackHistoryInfoList.firstOrNull {
+                val poolSize = config.randomBlackHistoryInfoList.firstOrNull {
                     it.group == group.id
-                }?.let {
-                    it.poolSize
-                } ?: return null
+                }?.poolSize ?: return null
                 val groupMap = randomBlackRecordMap.getOrPut(this.group.id) {
                     GroupRandomBlackRecord(
                         group.id,
-                        pollSize,
+                        poolSize,
                         mutableMapOf()
                     )
                 }
                 val userRecord = groupMap.recordMap.getOrPut(sender.id) {
-                    RandomBlackHistoryRecord(sender.id, pollSize, 0, random.nextInt(pollSize))
+                    RandomBlackHistoryRecord(sender.id, poolSize, 0, random.nextInt(poolSize))
                 }
                 return userRecord
             }
