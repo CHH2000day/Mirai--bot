@@ -62,6 +62,10 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
      */
 
     private var allowAddBlackHistoryWithName: Boolean = true
+
+    /**
+     * 来点XX黑历史/来点XX语录
+     */
     private val NAME_REGEX = Regex("来点.{1,20}[黑历史|语录]")
 
     init {
@@ -177,6 +181,11 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         }
     }
 
+    /**
+     * (/)添加黑历史 <member> <图片>
+     * or
+     * (/)添加语录 <member> <图片>
+     */
     object AddCommand : RawCommand(
         BlackHistoryPluginMain,
         "添加黑历史",
@@ -205,7 +214,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 return
             }
             if (args.size < 2) {
-                sendMessage("参数列表错误")
+                sendMessage("参数列表错误.\n使用方法:\n$usage")
                 return
             }
             val pic = args[1]
@@ -219,6 +228,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                         handle(it, pic)
                     }
                 }
+
                 is PlainText -> {
                     val memberId = dbHelper.getQQIdByNickname(destUser.content.trim())
                     if (memberId == 0L) {
@@ -234,6 +244,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                     }
                     handle(member, pic)
                 }
+
                 else -> {
                     sendMessage("未知对象${destUser::class.qualifiedName}:${destUser.contentToString()}")
                 }
