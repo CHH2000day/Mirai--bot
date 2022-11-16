@@ -36,6 +36,7 @@ import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
 import kotlin.math.pow
+import kotlin.random.Random
 
 /**
  * @Author CHH2000day
@@ -56,6 +57,9 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     private var hasGroupConstraints = false
     private lateinit var enabledGroups: List<Long>
     private var allowBindViaCommand: Boolean = true
+
+    private val randomBlackRecordMap = mutableMapOf<Long, GroupRandomBlackRecord>()
+    private val random = Random.Default
 
     /**
      * 是否允许使用如"添加黑历史 X (图片)"的方式添加黑历史
@@ -79,10 +83,46 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     override fun onEnable() {
         super.onEnable()
         init()
-        globalEventChannel().subscribeAlways<GroupMessageEvent> {
+        globalEventChannel().subscribeAlways<GroupMessageEvent> { groupMessageEvent ->
             if (hasGroupConstraints && !enabledGroups.contains(this.group.id)) {
                 return@subscribeAlways
             }
+            fun getRandomRecord(): RandomBlackHistoryRecord? {
+                val pollSize = config.randomBlackHistoryInfoList.firstOrNull {
+                    it.group == group.id
+                }?.let {
+                    it.poolSize
+                } ?: return null
+                val groupMap = randomBlackRecordMap.getOrPut(this.group.id) {
+                    GroupRandomBlackRecord(
+                        group.id,
+                        pollSize,
+                        mutableMapOf()
+                    )
+                }
+                val userRecord = groupMap.recordMap.getOrPut(sender.id) {
+                    RandomBlackHistoryRecord(sender.id, pollSize, 0, random.nextInt(pollSize))
+                }
+                return userRecord
+            }
+
+            //处理随机黑历史
+            val randomRecord = getRandomRecord()
+            if (randomRecord != null) {
+                with(randomRecord) {
+                    val newCounter = (counter + 1) % poolSize
+                    if (newCounter == 0) {
+                        encounteredInCycle = false
+                    }
+                    counter = newCounter
+                }
+                if (randomRecord.counter == randomRecord.targetNum) {
+                    randomRecord.encounteredInCycle = true
+                    randomRecord.targetNum = random.nextInt(randomRecord.poolSize)
+                    sendBlackHistory(randomRecord.qq, null, true)
+                }
+            }
+
             val contentStr = this.message.contentToString()
             for (pattern in NAME_REGEX.findAll(contentStr)) {
                 val patternString = pattern.groups[0]?.value!!
@@ -99,16 +139,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                     sendMessage("未记录的昵称:$name")
                     return@subscribeAlways
                 }
-                val blackHistoryList = dbHelper.getBlackHistoryList(qq, this.group.id)
-                if (blackHistoryList.isEmpty()) {
-                    this.group.sendMessage(this.message.quote() + "找不到${name}的黑历史")
-                } else {
-                    //随机挑个黑历史
-                    val file = File(imageDir, blackHistoryList.random())
-                    file.toExternalResource().use {
-                        this.group.sendMessage(it.uploadAsImage(this.group))
-                    }
-                }
+                sendBlackHistory(qq, name)
                 //只处理一次
                 break
             }
@@ -117,6 +148,23 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         AddCommand.register()
         if (allowBindViaCommand) {
             BindNickCommand.register()
+        }
+    }
+
+    private suspend fun GroupMessageEvent.sendBlackHistory(
+        qq: Long,
+        name: String?,
+        discardEmptyWarn: Boolean = false
+    ) {
+        val blackHistoryList = dbHelper.getBlackHistoryList(qq, this.group.id)
+        if (blackHistoryList.isEmpty() && !discardEmptyWarn) {
+            this.group.sendMessage(this.message.quote() + "找不到${name}的黑历史")
+        } else {
+            //随机挑个黑历史
+            val file = File(imageDir, blackHistoryList.random())
+            file.toExternalResource().use {
+                this.group.sendMessage(it.uploadAsImage(this.group))
+            }
         }
     }
 
@@ -296,6 +344,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         }
     }
 
+    @Suppress("SqlResolve")
     class DatabaseHelper(private val dbUrl: String, private val dbUsername: String, private val dbPassword: String) :
         Closeable {
         private lateinit var mConnection: Connection
@@ -441,6 +490,34 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         /**
          * 是否启用绑定指令
          */
-        val allowBindViaCommand: Boolean = true
+        val allowBindViaCommand: Boolean = true,
+        /**
+         * 需要随机发送黑历史的群
+         */
+        val randomBlackHistoryInfoList: List<RandomBlackHistoryInfo> = mutableListOf()
+    )
+
+    /**
+     * 随机发送黑历史的信息
+     */
+    @Serializable
+    data class RandomBlackHistoryInfo(val group: Long, val poolSize: Int)
+
+    /**
+     * 随机发送黑历史的记录
+     */
+    data class RandomBlackHistoryRecord(
+        val qq: Long,
+        var poolSize: Int,
+        var counter: Int,
+        var targetNum: Int,
+        var encounteredInCycle: Boolean = false
+    )
+
+
+    data class GroupRandomBlackRecord(
+        val group: Long,
+        var poolSize: Int,
+        val recordMap: MutableMap<Long, RandomBlackHistoryRecord>
     )
 }
