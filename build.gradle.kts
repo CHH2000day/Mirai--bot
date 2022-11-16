@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.chh2000day.mirai"
-version = "0.2.9"
+version = "0.3.0"
 
 repositories {
     mavenCentral()
@@ -24,7 +24,9 @@ dependencies {
     compileOnly("com.squareup.okhttp3:okhttp:${Versions.okHttpVersion}")
     compileOnly("com.squareup.okhttp3:okhttp-tls:${Versions.okHttpVersion}")
 }
-
+mirai {
+    this.jvmTarget = org.gradle.api.JavaVersion.VERSION_11
+}
 tasks.withType<KotlinCompile>() {
     kotlinOptions.jvmTarget = "11"
 }
