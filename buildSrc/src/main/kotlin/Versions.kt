@@ -2,7 +2,7 @@ object Versions {
     //依赖的版本
     const val kotlinVersion = "1.6.20"
     const val shadowJarVersion = "6.0.0"
-    const val miraiCoreVersion = "2.10.1"
+    const val miraiCoreVersion = "2.13.0-RC2"
     const val miraiConsoleVersion = miraiCoreVersion
     const val kotlinxSerializationVersion = "1.0.1"
     const val coroutineVersion = "1.4.0"
@@ -10,5 +10,5 @@ object Versions {
     const val okioVersion = "2.9.0"
 
     //    const val jsoupVersion = "1.13.1"
-    const val mysqlConnectorVersion = "8.0.21"
+    const val mysqlConnectorVersion = "8.0.30"
 }
