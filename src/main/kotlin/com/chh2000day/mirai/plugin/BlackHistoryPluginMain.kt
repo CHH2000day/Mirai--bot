@@ -114,7 +114,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                     }
                     counter = newCounter
                 }
-                if (randomRecord.counter == randomRecord.targetNum) {
+                if (randomRecord.counter == randomRecord.targetNum && !randomRecord.encounteredInCycle) {
                     randomRecord.encounteredInCycle = true
                     randomRecord.targetNum = random.nextInt(randomRecord.poolSize)
                     sendBlackHistory(randomRecord.qq, null, true)
