@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.chh2000day.mirai"
-version = "0.3.0"
+version = "0.3.1"
 
 repositories {
     mavenCentral()
