@@ -16,12 +16,9 @@ import net.mamoe.mirai.console.util.ConsoleExperimentalApi
 import net.mamoe.mirai.contact.Member
 import net.mamoe.mirai.event.events.GroupMessageEvent
 import net.mamoe.mirai.event.globalEventChannel
-import net.mamoe.mirai.message.data.At
-import net.mamoe.mirai.message.data.Image
+import net.mamoe.mirai.message.data.*
 import net.mamoe.mirai.message.data.Image.Key.queryUrl
-import net.mamoe.mirai.message.data.MessageChain
 import net.mamoe.mirai.message.data.MessageSource.Key.quote
-import net.mamoe.mirai.message.data.PlainText
 import net.mamoe.mirai.utils.ExternalResource.Companion.toExternalResource
 import net.mamoe.mirai.utils.ExternalResource.Companion.uploadAsImage
 import okhttp3.OkHttpClient
@@ -120,6 +117,13 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                     sendBlackHistory(randomRecord.qq, null, true)
                 }
             }
+            //实现回复某张图片将其添加为黑历史
+//            val quote = message.firstOrNull()
+//            if (quote is QuoteReply) {
+//                val originalMessage = quote.source.originalMessage
+//                val command = message.firstIsInstanceOrNull<PlainText>()
+//
+//            }
 
             val contentStr = this.message.contentToString()
             for (pattern in NAME_REGEX.findAll(contentStr)) {
@@ -141,7 +145,6 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 //只处理一次
                 break
             }
-
         }
         AddCommand.register()
         if (allowBindViaCommand) {
@@ -277,9 +280,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             when (val destUser = args[0]) {
                 is At -> {
                     this.group.members[destUser.target]?.let { member ->
-                        picList.forEach { pic ->
-                            handle(member, pic)
-                        }
+                        handle(member, picList)
                     }
                 }
 
@@ -296,38 +297,73 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                         sendMessage(this.fromEvent.message.quote() + "${destUser.content}不在本群QaQ")
                         return
                     }
-                    picList.forEach { pic ->
-                        handle(member, pic)
-                    }
+                    handle(member, picList)
                 }
 
                 else -> {
-                    sendMessage("未知对象${destUser::class.qualifiedName}:${destUser.contentToString()}")
+                    this.sendMessage("未知对象${destUser::class.qualifiedName}:${destUser.contentToString()}")
                 }
             }
         }
 
-        private suspend fun UserCommandSender.handle(member: Member, pics: Image) {
+        private suspend fun UserCommandSender.handle(member: Member, pics: List<Image>) {
             if (this !is MemberCommandSenderOnMessage) {
                 return
             }
-            //Download image first
-            val filename = downloadImage(pics)
-            if (filename.isBlank()) {
-                this.sendMessage(this.fromEvent.message.quote() + "下载图片失败")
-                return
+            val operator = this.user
+            val resultMap = mutableMapOf<Image, AddResult>()
+            for (pic in pics) {
+                resultMap[pic] = handleSingle(operator, member, pic)
             }
-            if (dbHelper.insertBlackHistory(
+            if (resultMap.all { it.value == AddResult.SUCCESS }) {
+                val message = fromEvent.message.quote() + "添加黑历史成功"
+                this.sendMessage(message)
+                return
+            } else {
+                val failedPicsMap = resultMap.filter { it.value != AddResult.SUCCESS }
+                failedPicsMap.forEach {
+                    logger.warning("添加黑历史失败:${it.key} : ${it.value}")
+                }
+                if (failedPicsMap.size == resultMap.size) {
+                    //全部失败
+                    val message = fromEvent.message.quote() + "添加黑历史大失败"
+                    this.sendMessage(message)
+                    return
+                }
+                this.sendMessage(fromEvent.message.quote() + "添加黑历史部分失败")
+                val infoMessage = buildMessageChain {
+                    add("失败的黑历史:")
+                    for (failInfo in failedPicsMap) {
+                        add("\n")
+                        add(failInfo.key)
+                        add(":${failInfo.value}")
+                    }
+                }
+                this.sendMessage(infoMessage)
+            }
+        }
+
+        private suspend fun handleSingle(operator: Member, member: Member, pic: Image): AddResult {
+            //Download image first
+            val filename = downloadImage(pic)
+            if (filename.isBlank()) {
+                return AddResult.DOWNLOAD_FAIL
+            }
+            return if (dbHelper.insertBlackHistory(
                     qq = member.id,
-                    operatorQQ = this.user.id,
+                    operatorQQ = operator.id,
                     group = member.group.id,
                     filename
                 )
             ) {
-                this.sendMessage(this.fromEvent.message.quote() + "添加黑历史成功")
+                AddResult.SUCCESS
             } else {
-                this.sendMessage(this.fromEvent.message.quote() + "添加黑历史失败")
+                AddResult.DATABASE_FAIL
             }
+        }
+
+        private enum class AddResult {
+            SUCCESS, DOWNLOAD_FAIL, DATABASE_FAIL
         }
     }
 
