@@ -58,7 +58,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     private lateinit var enabledGroups: List<Long>
     private var allowBindViaCommand: Boolean = true
 
-    private val randomBlackRecordMap = mutableMapOf<Long, GroupRandomBlackRecord>()
+    private val randomBlackRecordMap = mutableMapOf<Long, GroupRandomBlackHistoryRecord>()
     private val random = Random.Default
 
     /**
@@ -92,7 +92,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                     it.group == group.id
                 }?.poolSize ?: return null
                 val groupMap = randomBlackRecordMap.getOrPut(this.group.id) {
-                    GroupRandomBlackRecord(
+                    GroupRandomBlackHistoryRecord(
                         group.id,
                         poolSize,
                         mutableMapOf()
@@ -521,7 +521,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     )
 
 
-    data class GroupRandomBlackRecord(
+    data class GroupRandomBlackHistoryRecord(
         val group: Long,
         var poolSize: Int,
         val recordMap: MutableMap<Long, RandomBlackHistoryRecord>
