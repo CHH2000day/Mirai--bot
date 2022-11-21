@@ -232,6 +232,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
      * or
      * (/)添加语录 <member> <图片>
      */
+    @Suppress("OPT_IN_IS_NOT_ENABLED")
     object AddCommand : RawCommand(
         BlackHistoryPluginMain,
         "添加黑历史",
@@ -254,6 +255,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
          *
          * @see CommandManager.execute 查看更多信息
          */
+        @Suppress("KDocUnresolvedReference")
         override suspend fun CommandSender.onCommand(args: MessageChain) {
             if (this !is MemberCommandSenderOnMessage) {
                 sendMessage("来源错误!")
@@ -332,6 +334,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     /**
      * "/绑定昵称 '昵称'"
      */
+    @Suppress("OPT_IN_IS_NOT_ENABLED")
     object BindNickCommand : SimpleCommand(
         BlackHistoryPluginMain,
         "绑定昵称"
