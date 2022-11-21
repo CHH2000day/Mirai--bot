@@ -263,15 +263,21 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 sendMessage("参数列表错误.\n使用方法:\n$usage")
                 return
             }
-            val pic = args[1]
-            if (pic !is Image) {
+            val picList = args.filterIndexed { index, singleMessage ->
+                index > 1 && singleMessage is Image
+            }.map {
+                it as Image
+            }
+            if (picList.isEmpty()) {
                 sendMessage("参数错误:对象非图像")
                 return
             }
             when (val destUser = args[0]) {
                 is At -> {
-                    this.group.members[destUser.target]?.let {
-                        handle(it, pic)
+                    this.group.members[destUser.target]?.let { member ->
+                        picList.forEach { pic ->
+                            handle(member, pic)
+                        }
                     }
                 }
 
@@ -288,7 +294,9 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                         sendMessage(this.fromEvent.message.quote() + "${destUser.content}不在本群QaQ")
                         return
                     }
-                    handle(member, pic)
+                    picList.forEach { pic ->
+                        handle(member, pic)
+                    }
                 }
 
                 else -> {
@@ -342,7 +350,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         }
     }
 
-    @Suppress("SqlResolve")
+    @Suppress("SqlResolve", "SqlNoDataSourceInspection")
     class DatabaseHelper(private val dbUrl: String, private val dbUsername: String, private val dbPassword: String) :
         Closeable {
         private lateinit var mConnection: Connection
