@@ -80,44 +80,57 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     override fun onEnable() {
         super.onEnable()
         init()
-        globalEventChannel().subscribeAlways<GroupMessageEvent> { groupMessageEvent ->
-            if (hasGroupConstraints && !enabledGroups.contains(this.group.id)) {
-                return@subscribeAlways
-            }
-            fun getRandomRecord(): RandomBlackHistoryRecord? {
-                val poolSize = config.randomBlackHistoryInfoList.firstOrNull {
-                    it.group == group.id
-                }?.poolSize ?: return null
-                val groupMap = randomBlackRecordMap.getOrPut(this.group.id) {
-                    GroupRandomBlackHistoryRecord(
-                        group.id,
-                        poolSize,
-                        mutableMapOf()
-                    )
-                }
-                val userRecord = groupMap.recordMap.getOrPut(sender.id) {
-                    RandomBlackHistoryRecord(sender.id, poolSize, 0, random.nextInt(poolSize))
-                }
-                return userRecord
-            }
+        globalEventChannel().subscribeAlways<GroupMessageEvent> {
+            handleGroupMessage()
+        }
 
-            //处理随机黑历史
-            val randomRecord = getRandomRecord()
-            if (randomRecord != null) {
-                with(randomRecord) {
-                    val newCounter = (counter + 1) % poolSize
-                    if (newCounter == 0) {
-                        encounteredInCycle = false
-                    }
-                    counter = newCounter
-                }
-                if (randomRecord.counter == randomRecord.targetNum && !randomRecord.encounteredInCycle) {
-                    randomRecord.encounteredInCycle = true
-                    randomRecord.targetNum = random.nextInt(randomRecord.poolSize)
-                    sendBlackHistory(randomRecord.qq, null, true)
-                }
+        AddCommand.register()
+        if (allowBindViaCommand) {
+            BindNickCommand.register()
+        }
+    }
+
+    /**
+     * 处理群聊事件:来点xx语录,随机黑历史
+     */
+    private suspend fun GroupMessageEvent.handleGroupMessage() {
+        if (hasGroupConstraints && !enabledGroups.contains(this.group.id)) {
+            return
+        }
+        fun getRandomRecord(): RandomBlackHistoryRecord? {
+            val poolSize = config.randomBlackHistoryInfoList.firstOrNull {
+                it.group == group.id
+            }?.poolSize ?: return null
+            val groupMap = randomBlackRecordMap.getOrPut(this.group.id) {
+                GroupRandomBlackHistoryRecord(
+                    group.id,
+                    poolSize,
+                    mutableMapOf()
+                )
             }
-            //实现回复某张图片将其添加为黑历史
+            val userRecord = groupMap.recordMap.getOrPut(sender.id) {
+                RandomBlackHistoryRecord(sender.id, poolSize, 0, random.nextInt(poolSize))
+            }
+            return userRecord
+        }
+
+        //处理随机黑历史
+        val randomRecord = getRandomRecord()
+        if (randomRecord != null) {
+            with(randomRecord) {
+                val newCounter = (counter + 1) % poolSize
+                if (newCounter == 0) {
+                    encounteredInCycle = false
+                }
+                counter = newCounter
+            }
+            if (randomRecord.counter == randomRecord.targetNum && !randomRecord.encounteredInCycle) {
+                randomRecord.encounteredInCycle = true
+                randomRecord.targetNum = random.nextInt(randomRecord.poolSize)
+                sendBlackHistory(randomRecord.qq, null, true)
+            }
+        }
+        //实现回复某张图片将其添加为黑历史
 //            val quote = message.firstOrNull()
 //            if (quote is QuoteReply) {
 //                val originalMessage = quote.source.originalMessage
@@ -125,30 +138,25 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
 //
 //            }
 
-            val contentStr = this.message.contentToString()
-            for (pattern in NAME_REGEX.findAll(contentStr)) {
-                val patternString = pattern.groups[0]?.value!!
-                val endIndex = pattern.groups[0].let {
-                    if (patternString.endsWith("语录")) {
-                        it!!.range.last - 1
-                    } else {
-                        it!!.range.last - 2
-                    }
+        val contentStr = this.message.contentToString()
+        for (pattern in NAME_REGEX.findAll(contentStr)) {
+            val patternString = pattern.groups[0]?.value!!
+            val endIndex = pattern.groups[0].let {
+                if (patternString.endsWith("语录")) {
+                    it!!.range.last - 1
+                } else {
+                    it!!.range.last - 2
                 }
-                val name = contentStr.substring(pattern.range.first + 2, endIndex)
-                val qq = dbHelper.getQQIdByNickname(name)
-                if (qq < 10000) {
-                    sendMessage("未记录的昵称:$name")
-                    return@subscribeAlways
-                }
-                sendBlackHistory(qq, name)
-                //只处理一次
-                break
             }
-        }
-        AddCommand.register()
-        if (allowBindViaCommand) {
-            BindNickCommand.register()
+            val name = contentStr.substring(pattern.range.first + 2, endIndex)
+            val qq = dbHelper.getQQIdByNickname(name)
+            if (qq < 10000) {
+                sendMessage("未记录的昵称:$name")
+                return
+            }
+            sendBlackHistory(qq, name)
+            //只处理一次
+            break
         }
     }
 
@@ -390,7 +398,11 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     }
 
     @Suppress("SqlResolve", "SqlNoDataSourceInspection")
-    class DatabaseHelper(private val dbUrl: String, private val dbUsername: String, private val dbPassword: String) :
+    class DatabaseHelper(
+        private val dbUrl: String,
+        private val dbUsername: String,
+        private val dbPassword: String
+    ) :
         Closeable {
         private lateinit var mConnection: Connection
         private var errorCounter = 0
@@ -452,7 +464,12 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             emptyList()
         }
 
-        internal suspend fun insertBlackHistory(qq: Long, operatorQQ: Long, group: Long, filename: String): Boolean =
+        internal suspend fun insertBlackHistory(
+            qq: Long,
+            operatorQQ: Long,
+            group: Long,
+            filename: String
+        ): Boolean =
             kotlin.runCatching {
                 val statement =
                     getConnection().prepareStatement("insert into pic_info (filename, qq, `group`,operator) values (?,?,?,?);")
