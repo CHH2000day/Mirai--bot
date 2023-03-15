@@ -1,5 +1,6 @@
 package com.chh2000day.mirai.plugin
 
+import com.chh2000day.mirai.plugin.BlackHistoryPluginMain.sendBlackHistory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -151,7 +152,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             val name = contentStr.substring(pattern.range.first + 2, endIndex)
             val qq = dbHelper.getQQIdByNickname(name)
             if (qq < 10000) {
-                sendMessage("未记录的昵称:$name")
+                this.group.sendMessage("未记录的昵称:$name")
                 return
             }
             sendBlackHistory(qq, name)
