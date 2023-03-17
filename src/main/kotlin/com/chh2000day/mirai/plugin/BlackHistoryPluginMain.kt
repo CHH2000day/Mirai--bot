@@ -278,7 +278,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 return
             }
             val picList = args.filterIndexed { index, singleMessage ->
-                index > 1 && singleMessage is Image
+                singleMessage is Image
             }.map {
                 it as Image
             }
