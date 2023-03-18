@@ -70,6 +70,11 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
      */
     private val NAME_REGEX = Regex("来点.{1,20}[黑历史|语录]")
 
+    /**
+     * @1234565789
+     */
+    private val AT_REGEX = Regex("@[0-9]+")
+
     init {
         kotlin.runCatching { Class.forName("com.mysql.cj.jdbc.Driver").getConstructor().newInstance() }
             .exceptionOrNull()?.let {
@@ -138,7 +143,6 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
 //                val command = message.firstIsInstanceOrNull<PlainText>()
 //
 //            }
-
         val contentStr = this.message.contentToString()
         for (pattern in NAME_REGEX.findAll(contentStr)) {
             val patternString = pattern.groups[0]?.value!!
@@ -150,7 +154,22 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 }
             }
             val name = contentStr.substring(pattern.range.first + 2, endIndex)
-            val qq = dbHelper.getQQIdByNickname(name)
+            val qq = when {
+                name == "我的" -> {
+                    this.sender.id
+                }
+
+                name.matches(AT_REGEX) -> {
+                    /**
+                     * 格式为 @123456789
+                     */
+                    name.substring(1).trim().toLongOrNull() ?: -1
+                }
+
+                else -> {
+                    dbHelper.getQQIdByNickname(name)
+                }
+            }
             if (qq < 10000) {
                 this.group.sendMessage("未记录的昵称:$name")
                 return
