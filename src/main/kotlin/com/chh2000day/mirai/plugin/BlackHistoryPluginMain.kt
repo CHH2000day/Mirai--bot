@@ -1,6 +1,5 @@
 package com.chh2000day.mirai.plugin
 
-import com.chh2000day.mirai.plugin.BlackHistoryPluginMain.sendBlackHistory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -9,6 +8,7 @@ import kotlinx.serialization.json.Json
 import net.mamoe.mirai.console.command.*
 import net.mamoe.mirai.console.command.CommandManager.INSTANCE.register
 import net.mamoe.mirai.console.command.CommandManager.INSTANCE.unregister
+import net.mamoe.mirai.console.command.CommandSender.Companion.toCommandSender
 import net.mamoe.mirai.console.command.ConsoleCommandSender.sendMessage
 import net.mamoe.mirai.console.command.descriptor.ExperimentalCommandDescriptors
 import net.mamoe.mirai.console.plugin.jvm.JvmPluginDescription
@@ -136,13 +136,27 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 sendBlackHistory(randomRecord.qq, null, true)
             }
         }
-        //实现回复某张图片将其添加为黑历史
-//            val quote = message.firstOrNull()
-//            if (quote is QuoteReply) {
-//                val originalMessage = quote.source.originalMessage
-//                val command = message.firstIsInstanceOrNull<PlainText>()
-//
-//            }
+//        实现回复某张图片将其添加为黑历史
+        val quote = message.firstOrNull()
+        if (quote is QuoteReply) {
+            val originalMessage = quote.source.originalMessage
+            val command = message.firstIsInstanceOrNull<PlainText>()?.contentToString()
+            if (command == "添加黑历史" || command == "添加语录") {
+                val operator = this.sender
+                val pics = originalMessage.filterIsInstance<Image>()
+                if (pics.isEmpty()) {
+                    sendMessage(originalMessage.quote() + "添加黑历史参数错误:对象非图像")
+                } else {
+                    //构建UserCommandSender调用指令
+                    with(AddCommand) {
+                        toCommandSender().handle(operator, pics)
+                    }
+                }
+            }
+        }
+
+
+        //来点XX语录
         val contentStr = this.message.contentToString()
         for (pattern in NAME_REGEX.findAll(contentStr)) {
             val patternString = pattern.groups[0]?.value!!
@@ -296,11 +310,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 sendMessage("参数列表错误.\n使用方法:\n$usage")
                 return
             }
-            val picList = args.filterIndexed { index, singleMessage ->
-                singleMessage is Image
-            }.map {
-                it as Image
-            }
+            val picList = args.filterIsInstance<Image>()
             if (picList.isEmpty()) {
                 sendMessage("参数错误:对象非图像")
                 return
@@ -334,7 +344,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             }
         }
 
-        private suspend fun UserCommandSender.handle(member: Member, pics: List<Image>) {
+        internal suspend fun UserCommandSender.handle(member: Member, pics: List<Image>) {
             if (this !is MemberCommandSenderOnMessage) {
                 return
             }
@@ -370,6 +380,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 this.sendMessage(infoMessage)
             }
         }
+
 
         private suspend fun handleSingle(operator: Member, member: Member, pic: Image): AddResult {
             //Download image first
