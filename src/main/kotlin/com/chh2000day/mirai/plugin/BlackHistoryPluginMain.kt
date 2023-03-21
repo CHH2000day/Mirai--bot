@@ -8,8 +8,6 @@ import kotlinx.serialization.json.Json
 import net.mamoe.mirai.console.command.*
 import net.mamoe.mirai.console.command.CommandManager.INSTANCE.register
 import net.mamoe.mirai.console.command.CommandManager.INSTANCE.unregister
-import net.mamoe.mirai.console.command.CommandSender.Companion.toCommandSender
-import net.mamoe.mirai.console.command.ConsoleCommandSender.sendMessage
 import net.mamoe.mirai.console.command.descriptor.ExperimentalCommandDescriptors
 import net.mamoe.mirai.console.plugin.jvm.JvmPluginDescription
 import net.mamoe.mirai.console.plugin.jvm.KotlinPlugin
@@ -22,6 +20,8 @@ import net.mamoe.mirai.message.data.Image.Key.queryUrl
 import net.mamoe.mirai.message.data.MessageSource.Key.quote
 import net.mamoe.mirai.utils.ExternalResource.Companion.toExternalResource
 import net.mamoe.mirai.utils.ExternalResource.Companion.uploadAsImage
+import net.mamoe.mirai.utils.debug
+import net.mamoe.mirai.utils.verbose
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okio.buffer
@@ -33,6 +33,7 @@ import java.io.FileNotFoundException
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.pow
 import kotlin.random.Random
 
@@ -54,6 +55,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
     private lateinit var dbHelper: DatabaseHelper
     private var hasGroupConstraints = false
     private lateinit var enabledGroups: List<Long>
+    private lateinit var messageCache: MessageCache
     private var allowBindViaCommand: Boolean = true
 
     private val randomBlackRecordMap = mutableMapOf<Long, GroupRandomBlackHistoryRecord>()
@@ -120,6 +122,11 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             return userRecord
         }
 
+        //缓存
+        if (message.contains(Image)) {
+            messageCache.put(this.message)
+        }
+
         //处理随机黑历史
         val randomRecord = getRandomRecord()
         if (randomRecord != null) {
@@ -136,25 +143,6 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 sendBlackHistory(randomRecord.qq, null, true)
             }
         }
-//        实现回复某张图片将其添加为黑历史
-        val quote = message.firstOrNull()
-        if (quote is QuoteReply) {
-            val originalMessage = quote.source.originalMessage
-            val command = message.firstIsInstanceOrNull<PlainText>()?.contentToString()
-            if (command == "添加黑历史" || command == "添加语录") {
-                val operator = this.sender
-                val pics = originalMessage.filterIsInstance<Image>()
-                if (pics.isEmpty()) {
-                    sendMessage(originalMessage.quote() + "添加黑历史参数错误:对象非图像")
-                } else {
-                    //构建UserCommandSender调用指令
-                    with(AddCommand) {
-                        toCommandSender().handle(operator, pics)
-                    }
-                }
-            }
-        }
-
 
         //来点XX语录
         val contentStr = this.message.contentToString()
@@ -221,6 +209,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             logger.error("数据库配置文件不存在!")
             throw FileNotFoundException("数据库配置文件不存在!")
         }
+        messageCache = MessageCache(config.cacheSize)
         dbHelper = DatabaseHelper(
             config.databaseUrl,
             config.databaseUsername,
@@ -306,11 +295,26 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 sendMessage("来源错误!")
                 return
             }
-            if (args.size < 2) {
+            val isQuote = fromEvent.message.contains(QuoteReply)
+            val origMessage = fromEvent.message[QuoteReply]?.source?.let {
+                messageCache.get(it.ids, it.fromId)
+            }
+            if (isQuote && origMessage == null) {
+                sendMessage("找不到原始消息")
+                return
+            }
+            if (args.size < 2 && !isQuote) {
+                logger.debug { "Message:" + this.fromEvent.message.map { it::class.qualifiedName }.joinToString() }
+                logger.debug { "Args: $args \n" + args.map { it::class.qualifiedName }.joinToString() }
                 sendMessage("参数列表错误.\n使用方法:\n$usage")
                 return
             }
-            val picList = args.filterIsInstance<Image>()
+            val picList = if (isQuote) {
+                logger.verbose { origMessage.toString() }
+                origMessage!!.filterIsInstance<Image>()
+            } else {
+                args.filterIsInstance<Image>()
+            }
             if (picList.isEmpty()) {
                 sendMessage("参数错误:对象非图像")
                 return
@@ -344,7 +348,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             }
         }
 
-        internal suspend fun UserCommandSender.handle(member: Member, pics: List<Image>) {
+        private suspend fun UserCommandSender.handle(member: Member, pics: List<Image>) {
             if (this !is MemberCommandSenderOnMessage) {
                 return
             }
@@ -587,7 +591,11 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         /**
          * 需要随机发送黑历史的群
          */
-        val randomBlackHistoryInfoList: List<RandomBlackHistoryInfo> = mutableListOf()
+        val randomBlackHistoryInfoList: List<RandomBlackHistoryInfo> = mutableListOf(),
+        /**
+         * 缓存的消息数量,用于恢复添加黑历史时使用
+         */
+        val cacheSize: Int = 4096
     )
 
     /**
@@ -613,4 +621,24 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         var poolSize: Int,
         val recordMap: MutableMap<Long, RandomBlackHistoryRecord>
     )
+
+    class MessageCache(private val size: Int) {
+        private val cacheArray: Array<MessageChain?> = arrayOfNulls(size)
+        private val counter = AtomicLong(0)
+        fun put(message: MessageChain) {
+            val index = counter.getAndIncrement() % size
+            cacheArray[index.toInt()] = message
+        }
+
+        fun get(ids: IntArray, groupId: Long): MessageChain? {
+            for (i in 0 until size) {
+                val msg = cacheArray[i] ?: continue
+                val msgSrc = msg.sourceOrNull ?: continue
+                if (msgSrc.ids.contentEquals(ids) && msgSrc.fromId == groupId) {
+                    return msg
+                }
+            }
+            return null
+        }
+    }
 }
