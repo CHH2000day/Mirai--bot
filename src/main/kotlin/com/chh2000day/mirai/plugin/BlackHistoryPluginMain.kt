@@ -155,7 +155,7 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                     it!!.range.last - 2
                 }
             }
-            val name = contentStr.substring(pattern.range.first + 2, endIndex)
+            val name = contentStr.substring(pattern.range.first + 2, endIndex).trim()
             val qq = when {
                 name == "我的" -> {
                     this.sender.id
