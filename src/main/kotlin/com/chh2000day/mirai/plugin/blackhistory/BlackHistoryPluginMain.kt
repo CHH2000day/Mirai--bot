@@ -1,9 +1,12 @@
-package com.chh2000day.mirai.plugin
+package com.chh2000day.mirai.plugin.blackhistory
 
+import com.chh2000day.mirai.plugin.blackhistory.cache.MessageCache
+import com.chh2000day.mirai.plugin.blackhistory.config.Config
+import com.chh2000day.mirai.plugin.blackhistory.database.DatabaseHelper
+import com.chh2000day.mirai.plugin.blackhistory.struct.GroupRandomBlackHistoryRecord
+import com.chh2000day.mirai.plugin.blackhistory.struct.RandomBlackHistoryRecord
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import net.mamoe.mirai.console.command.*
 import net.mamoe.mirai.console.command.CommandManager.INSTANCE.register
@@ -27,14 +30,8 @@ import okhttp3.Request
 import okio.buffer
 import okio.sink
 import okio.source
-import java.io.Closeable
 import java.io.File
 import java.io.FileNotFoundException
-import java.sql.Connection
-import java.sql.DriverManager
-import java.sql.SQLException
-import java.util.concurrent.atomic.AtomicLong
-import kotlin.math.pow
 import kotlin.random.Random
 
 /**
@@ -105,28 +102,35 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         if (hasGroupConstraints && !enabledGroups.contains(this.group.id)) {
             return
         }
-        fun getRandomRecord(): RandomBlackHistoryRecord? {
-            val poolSize = config.randomBlackHistoryInfoList.firstOrNull {
-                it.group == group.id
-            }?.poolSize ?: return null
-            val groupMap = randomBlackRecordMap.getOrPut(this.group.id) {
-                GroupRandomBlackHistoryRecord(
-                    group.id,
-                    poolSize,
-                    mutableMapOf()
-                )
-            }
-            val userRecord = groupMap.recordMap.getOrPut(sender.id) {
-                RandomBlackHistoryRecord(sender.id, poolSize, 0, random.nextInt(poolSize))
-            }
-            return userRecord
-        }
 
         //缓存
         if (message.contains(Image)) {
             messageCache.put(this.message)
         }
 
+        handleRandomBlackHistory()
+
+        handleGetBlackHistory()
+    }
+
+    private fun GroupMessageEvent.getRandomRecord(): RandomBlackHistoryRecord? {
+        val poolSize = config.randomBlackHistoryInfoList.firstOrNull {
+            it.group == group.id
+        }?.poolSize ?: return null
+        val groupMap = randomBlackRecordMap.getOrPut(this.group.id) {
+            GroupRandomBlackHistoryRecord(
+                group.id,
+                poolSize,
+                mutableMapOf()
+            )
+        }
+        val userRecord = groupMap.recordMap.getOrPut(sender.id) {
+            RandomBlackHistoryRecord(sender.id, poolSize, 0, random.nextInt(poolSize))
+        }
+        return userRecord
+    }
+
+    private suspend fun GroupMessageEvent.handleRandomBlackHistory() {
         //处理随机黑历史
         val randomRecord = getRandomRecord()
         if (randomRecord != null) {
@@ -143,7 +147,9 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
                 sendBlackHistory(randomRecord.qq, null, true)
             }
         }
+    }
 
+    private suspend fun GroupMessageEvent.handleGetBlackHistory() {
         //来点XX语录
         val contentStr = this.message.contentToString()
         for (pattern in NAME_REGEX.findAll(contentStr)) {
@@ -213,7 +219,8 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
         dbHelper = DatabaseHelper(
             config.databaseUrl,
             config.databaseUsername,
-            config.databasePassword
+            config.databasePassword,
+            logger
         )
         imageDir = File(config.imageDir)
         enabledGroups = config.enabledGroups
@@ -429,217 +436,6 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
             } else {
                 sendMessage("绑定昵称失败")
             }
-        }
-    }
-
-    @Suppress("SqlResolve", "SqlNoDataSourceInspection")
-    class DatabaseHelper(
-        private val dbUrl: String,
-        private val dbUsername: String,
-        private val dbPassword: String
-    ) :
-        Closeable {
-        private lateinit var mConnection: Connection
-        private var errorCounter = 0
-        private val connectTime = 1000L
-        private val maxConnectionTries = 6
-
-        init {
-            connect(dbUrl, dbUsername, dbPassword)
-        }
-
-        private fun connect(dbUrl: String, dbUsername: String, dbPassword: String) {
-            kotlin.runCatching {
-                logger.info("连接数据库...")
-                mConnection = DriverManager.getConnection(dbUrl, dbUsername, dbPassword)
-                errorCounter = 0
-            }.exceptionOrNull()?.let {
-                logger.error("连接数据库失败", it)
-            }
-        }
-
-        private suspend fun getConnection(): Connection = withContext(Dispatchers.IO) {
-            if (mConnection.isValid(100)) {
-                return@withContext mConnection
-            } else {
-                logger.warning("数据库连接断开")
-                errorCounter++
-                if (errorCounter > maxConnectionTries) {
-                    throw SQLException("无法与数据库取得连接!")
-                } else {
-                    val delay = connectTime * 2.toDouble().pow(errorCounter.toDouble())
-                    logger.warning("将于${delay}ms后第${errorCounter}次重连数据库")
-                    delay(delay.toLong())
-                    connect(dbUrl, dbUsername, dbPassword)
-                    return@withContext getConnection()
-                }
-            }
-        }
-
-        /**
-         * @return 黑历史图片的列表
-         */
-        internal suspend fun getBlackHistoryList(qq: Long, group: Long): List<String> = kotlin.runCatching {
-            val result = mutableListOf<String>()
-            val statement =
-                getConnection().prepareStatement("select filename from `pic_info` where qq=? and `group`=?;")
-            statement.use { preparedStatement ->
-                preparedStatement.setLong(1, qq)
-                preparedStatement.setLong(2, group)
-                val resultSet = preparedStatement.executeQuery()
-                resultSet.use {
-                    while (it.next()) {
-                        result.add(it.getString(1))
-                    }
-                }
-            }
-            return result
-        }.getOrElse {
-            logger.error("获取群成员黑历史失败", it)
-            emptyList()
-        }
-
-        internal suspend fun insertBlackHistory(
-            qq: Long,
-            operatorQQ: Long,
-            group: Long,
-            filename: String
-        ): Boolean =
-            kotlin.runCatching {
-                val statement =
-                    getConnection().prepareStatement("insert into pic_info (filename, qq, `group`,operator) values (?,?,?,?);")
-                statement.use {
-                    it.setString(1, filename)
-                    it.setLong(2, qq)
-                    it.setLong(3, group)
-                    it.setLong(4, operatorQQ)
-                    return@runCatching it.executeUpdate() > 0
-                }
-            }.getOrElse {
-                logger.error("添加群成员黑历史失败", it)
-                false
-            }
-
-        internal suspend fun bindNickname(qq: Long, nickname: String): Boolean = kotlin.runCatching {
-            val statement =
-                getConnection().prepareStatement("insert into nickname (nickname, qq) values (?,?);")
-            statement.use {
-                it.setString(1, nickname)
-                it.setLong(2, qq)
-                return@runCatching it.executeUpdate() > 0
-            }
-        }.getOrElse {
-            logger.error("绑定昵称失败", it)
-            false
-        }
-
-        internal suspend fun getQQIdByNickname(nickname: String): Long = kotlin.runCatching {
-            val statement =
-                getConnection().prepareStatement("select qq from nickname where nickname=?;")
-            statement.use { preparedStatement ->
-                preparedStatement.setString(1, nickname)
-                val resultSet = preparedStatement.executeQuery()
-                resultSet.use {
-                    if (it.next()) {
-                        return@runCatching it.getLong(1)
-                    }
-                }
-            }
-            return 0
-        }.getOrElse {
-            logger.error("获取群成员黑历史失败", it)
-            0
-        }
-
-        /**
-         * Closes this stream and releases any system resources associated
-         * with it. If the stream is already closed then invoking this
-         * method has no effect.
-         *
-         *
-         *  As noted in [AutoCloseable.close], cases where the
-         * close may fail require careful attention. It is strongly advised
-         * to relinquish the underlying resources and to internally
-         * *mark* the `Closeable` as closed, prior to throwing
-         * the `IOException`.
-         *
-         * @throws IOException if an I/O error occurs
-         */
-        @Suppress("KDocUnresolvedReference")
-        override fun close() {
-            if (!mConnection.isClosed) {
-                mConnection.close()
-            }
-        }
-    }
-
-    @Serializable
-    data class Config(
-        val databaseUrl: String,
-        val databaseUsername: String,
-        val databasePassword: String,
-        val imageDir: String,
-        val enabledGroups: List<Long> = mutableListOf(),
-        /**
-         * 是否允许使用如"添加黑历史 X (图片)"的方式添加黑历史
-         */
-        val allowAddBlackHistoryWithName: Boolean = true,
-        /**
-         * 是否启用绑定指令
-         */
-        val allowBindViaCommand: Boolean = true,
-        /**
-         * 需要随机发送黑历史的群
-         */
-        val randomBlackHistoryInfoList: List<RandomBlackHistoryInfo> = mutableListOf(),
-        /**
-         * 缓存的消息数量,用于恢复添加黑历史时使用
-         */
-        val cacheSize: Int = 4096
-    )
-
-    /**
-     * 随机发送黑历史的信息
-     */
-    @Serializable
-    data class RandomBlackHistoryInfo(val group: Long, val poolSize: Int)
-
-    /**
-     * 随机发送黑历史的记录
-     */
-    data class RandomBlackHistoryRecord(
-        val qq: Long,
-        var poolSize: Int,
-        var counter: Int,
-        var targetNum: Int,
-        var encounteredInCycle: Boolean = false
-    )
-
-
-    data class GroupRandomBlackHistoryRecord(
-        val group: Long,
-        var poolSize: Int,
-        val recordMap: MutableMap<Long, RandomBlackHistoryRecord>
-    )
-
-    class MessageCache(private val size: Int) {
-        private val cacheArray: Array<MessageChain?> = arrayOfNulls(size)
-        private val counter = AtomicLong(0)
-        fun put(message: MessageChain) {
-            val index = counter.getAndIncrement() % size
-            cacheArray[index.toInt()] = message
-        }
-
-        fun get(ids: IntArray, groupId: Long): MessageChain? {
-            for (i in 0 until size) {
-                //从0开始填充,因此可以跳过空消息
-                val msg = cacheArray[i] ?: break
-                val msgSrc = msg.sourceOrNull ?: continue
-                if (msgSrc.fromId == groupId && msgSrc.ids.contentEquals(ids)) {
-                    return msg
-                }
-            }
-            return null
         }
     }
 }
