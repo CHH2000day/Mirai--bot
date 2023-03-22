@@ -632,9 +632,10 @@ object BlackHistoryPluginMain : KotlinPlugin(JvmPluginDescription.loadFromResour
 
         fun get(ids: IntArray, groupId: Long): MessageChain? {
             for (i in 0 until size) {
-                val msg = cacheArray[i] ?: continue
+                //从0开始填充,因此可以跳过空消息
+                val msg = cacheArray[i] ?: break
                 val msgSrc = msg.sourceOrNull ?: continue
-                if (msgSrc.ids.contentEquals(ids) && msgSrc.fromId == groupId) {
+                if (msgSrc.fromId == groupId && msgSrc.ids.contentEquals(ids)) {
                     return msg
                 }
             }
